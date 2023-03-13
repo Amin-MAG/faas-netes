@@ -8,9 +8,9 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/Amin-MAG/faas-provider/auth"
+	"github.com/Amin-MAG/faas-provider/types"
 	"github.com/gorilla/mux"
-	"github.com/openfaas/faas-provider/auth"
-	"github.com/openfaas/faas-provider/types"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

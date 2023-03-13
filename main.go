@@ -11,6 +11,10 @@ import (
 	"os"
 	"time"
 
+	faasProvider "github.com/Amin-MAG/faas-provider"
+	"github.com/Amin-MAG/faas-provider/logs"
+	"github.com/Amin-MAG/faas-provider/proxy"
+	providertypes "github.com/Amin-MAG/faas-provider/types"
 	clientset "github.com/openfaas/faas-netes/pkg/client/clientset/versioned"
 	informers "github.com/openfaas/faas-netes/pkg/client/informers/externalversions"
 	v1 "github.com/openfaas/faas-netes/pkg/client/informers/externalversions/openfaas/v1"
@@ -19,10 +23,6 @@ import (
 	"github.com/openfaas/faas-netes/pkg/k8s"
 	"github.com/openfaas/faas-netes/pkg/signals"
 	version "github.com/openfaas/faas-netes/version"
-	faasProvider "github.com/openfaas/faas-provider"
-	"github.com/openfaas/faas-provider/logs"
-	"github.com/openfaas/faas-provider/proxy"
-	providertypes "github.com/openfaas/faas-provider/types"
 
 	kubeinformers "k8s.io/client-go/informers"
 	v1apps "k8s.io/client-go/informers/apps/v1"
@@ -202,9 +202,11 @@ func runController(setup serverSetup) {
 
 	bootstrapHandlers := providertypes.FaaSHandlers{
 		FunctionProxy:        proxy.NewHandlerFunc(config.FaaSConfig, functionLookup),
+		FlowProxy:            proxy.NewHandlerFunc(config.FaaSConfig, nil),
 		DeleteHandler:        handlers.MakeDeleteHandler(config.DefaultFunctionNamespace, kubeClient),
 		DeployHandler:        handlers.MakeDeployHandler(config.DefaultFunctionNamespace, factory),
 		FunctionReader:       handlers.MakeFunctionReader(config.DefaultFunctionNamespace, listers.DeploymentInformer.Lister()),
+		FlowReader:           handlers.MakeFlowReader(config.DefaultFunctionNamespace, nil),
 		ReplicaReader:        handlers.MakeReplicaReader(config.DefaultFunctionNamespace, listers.DeploymentInformer.Lister()),
 		ReplicaUpdater:       handlers.MakeReplicaUpdater(config.DefaultFunctionNamespace, kubeClient),
 		UpdateHandler:        handlers.MakeUpdateHandler(config.DefaultFunctionNamespace, factory),

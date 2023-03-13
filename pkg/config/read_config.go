@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log"
 
-	ftypes "github.com/openfaas/faas-provider/types"
+	ftypes "github.com/Amin-MAG/faas-provider/types"
 )
 
 var validPullPolicyOptions = map[string]bool{

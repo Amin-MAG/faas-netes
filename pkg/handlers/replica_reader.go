@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"time"
 
+	types "github.com/Amin-MAG/faas-provider/types"
 	"github.com/gorilla/mux"
 	"github.com/openfaas/faas-netes/pkg/k8s"
-	types "github.com/openfaas/faas-provider/types"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/client-go/listers/apps/v1"
 	glog "k8s.io/klog"

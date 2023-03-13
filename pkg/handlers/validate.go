@@ -8,11 +8,12 @@ import (
 	"fmt"
 	"regexp"
 
-	types "github.com/openfaas/faas-provider/types"
+	types "github.com/Amin-MAG/faas-provider/types"
 )
 
 // Regex for RFC-1123 validation:
-// 	k8s.io/kubernetes/pkg/util/validation/validation.go
+//
+//	k8s.io/kubernetes/pkg/util/validation/validation.go
 var validDNS = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
 // validates that the service name is valid for Kubernetes

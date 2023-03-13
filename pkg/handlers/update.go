@@ -14,7 +14,7 @@ import (
 
 	"github.com/openfaas/faas-netes/pkg/k8s"
 
-	types "github.com/openfaas/faas-provider/types"
+	types "github.com/Amin-MAG/faas-provider/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

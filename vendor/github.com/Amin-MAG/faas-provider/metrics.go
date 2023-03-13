@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/openfaas/faas-provider/httputil"
+	"github.com/Amin-MAG/faas-provider/httputil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
