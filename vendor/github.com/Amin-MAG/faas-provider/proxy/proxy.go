@@ -21,6 +21,7 @@
 package proxy
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -244,4 +245,12 @@ func getContentType(request http.Header, proxyResponse http.Header) (headerConte
 	}
 
 	return headerContentType
+}
+
+func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver) http.HandlerFunc {
+	fmt.Println("Creating new flow handler.")
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("the flow proxy handler is working properly.")
+		fmt.Printf("body is: %+v\n", r.Body)
+	}
 }

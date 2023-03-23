@@ -198,11 +198,15 @@ func runController(setup serverSetup) {
 	operator := false
 	listers := startInformers(setup, stopCh, operator)
 
+	// TODO: Get the config map of workflow configuration and connections and pass it to the FlowProxy
+
 	functionLookup := k8s.NewFunctionLookup(config.DefaultFunctionNamespace, listers.EndpointsInformer.Lister())
+	// TODO: define the flowLookup with a new type here
 
 	bootstrapHandlers := providertypes.FaaSHandlers{
-		FunctionProxy:        proxy.NewHandlerFunc(config.FaaSConfig, functionLookup),
-		FlowProxy:            proxy.NewHandlerFunc(config.FaaSConfig, nil),
+		FunctionProxy: proxy.NewHandlerFunc(config.FaaSConfig, functionLookup),
+		// TODO: change the function lookup to the workflow lookup
+		FlowProxy:            proxy.NewFlowHandler(config.FaaSConfig, functionLookup),
 		DeleteHandler:        handlers.MakeDeleteHandler(config.DefaultFunctionNamespace, kubeClient),
 		DeployHandler:        handlers.MakeDeployHandler(config.DefaultFunctionNamespace, factory),
 		FunctionReader:       handlers.MakeFunctionReader(config.DefaultFunctionNamespace, listers.DeploymentInformer.Lister()),
