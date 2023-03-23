@@ -78,11 +78,17 @@ func Serve(handlers *types.FaaSHandlers, config *types.FaaSConfig) {
 	r.HandleFunc("/system/namespaces", hm.InstrumentHandler(handlers.ListNamespaceHandler, "")).Methods(http.MethodGet)
 
 	proxyHandler := handlers.FunctionProxy
+	flowProxyHandler := handlers.FlowProxy
 
 	// Open endpoints
 	r.HandleFunc("/function/{name:["+NameExpression+"]+}", proxyHandler)
 	r.HandleFunc("/function/{name:["+NameExpression+"]+}/", proxyHandler)
 	r.HandleFunc("/function/{name:["+NameExpression+"]+}/{params:.*}", proxyHandler)
+
+	// Open endpoints for flow
+	r.HandleFunc("/flow/{name:["+NameExpression+"]+}", flowProxyHandler)
+	r.HandleFunc("/flow/{name:["+NameExpression+"]+}/", flowProxyHandler)
+	r.HandleFunc("/flow/{name:["+NameExpression+"]+}/{params:.*}", flowProxyHandler)
 
 	if handlers.HealthHandler != nil {
 		r.HandleFunc("/healthz", handlers.HealthHandler).Methods(http.MethodGet)
