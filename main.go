@@ -148,11 +148,10 @@ func main() {
 		log.Fatalf("Error creating flow configuration: %s", err.Error())
 	}
 	_ = json.Unmarshal([]byte(flowsData), &flows)
-	fmt.Print(string(flowsData))
-	fmt.Printf("%+v", flows)
 
 	setup := serverSetup{
 		config:              config,
+		flows:               flows,
 		functionFactory:     factory,
 		kubeInformerFactory: kubeInformerFactory,
 		faasInformerFactory: faasInformerFactory,
