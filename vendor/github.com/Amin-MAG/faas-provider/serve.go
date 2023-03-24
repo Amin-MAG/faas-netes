@@ -77,6 +77,8 @@ func Serve(handlers *types.FaaSHandlers, config *types.FaaSConfig) {
 
 	r.HandleFunc("/system/namespaces", hm.InstrumentHandler(handlers.ListNamespaceHandler, "")).Methods(http.MethodGet)
 
+	r.HandleFunc("/system/flows", handlers.Flows)
+
 	proxyHandler := handlers.FunctionProxy
 	flowProxyHandler := handlers.FlowProxy
 

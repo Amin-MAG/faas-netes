@@ -17,6 +17,7 @@ type FaaSHandlers struct {
 	FunctionProxy http.HandlerFunc
 
 	// Workflow Proxy
+	Flows      http.HandlerFunc
 	FlowProxy  http.HandlerFunc
 	FlowReader http.HandlerFunc
 

@@ -247,7 +247,7 @@ func getContentType(request http.Header, proxyResponse http.Header) (headerConte
 	return headerContentType
 }
 
-func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver) http.HandlerFunc {
+func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows types.Flows) http.HandlerFunc {
 	fmt.Println("Creating new flow handler.")
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("the flow proxy handler is working properly.")
