@@ -21,6 +21,8 @@
 package proxy
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -83,6 +85,75 @@ func NewHandlerFunc(config types.FaaSConfig, resolver BaseURLResolver) http.Hand
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
+	}
+}
+
+func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows types.Flows) http.HandlerFunc {
+	if resolver == nil {
+		panic("NewFlowHandler: empty proxy handler resolver, cannot be nil")
+	}
+
+	proxyClient := NewProxyClientFromConfig(config)
+
+	fmt.Println("Creating new flow handler.")
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("the flow proxy handler is working properly.")
+		fmt.Printf("body is: %+v\n", r.Body)
+
+		// Fetch the name of the node (function)
+		pathVars := mux.Vars(r)
+		functionName := pathVars["name"]
+		if functionName == "" {
+			httputil.Errorf(w, http.StatusBadRequest, "Provide function name in the request path")
+			return
+		}
+
+		// Fetch the flow of the node (function)
+		flow, ok := flows.Flows[functionName]
+		if !ok {
+			httputil.Errorf(w, http.StatusBadRequest, "Can not find this kind of function in flows config")
+		}
+
+		// Initialize the input flow variable
+		flowInput := types.FlowInput{
+			Args:     nil,
+			Children: nil,
+		}
+
+		// Read current request body
+		var requestBody map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&requestBody)
+		if err != nil {
+			log.Println("Error decoding JSON request body:", err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		// TODO: Check required fields for args
+
+		// Save arguments of body
+		flowInput.Args = requestBody
+
+		// Iterate the children of the node (function)
+		for alias, child := range flow.Children {
+			// Recursively run the flow for these nodes
+			fmt.Printf("processing the %s: [%+v], a child of %s\n", alias, child, functionName)
+
+			// Save the responses
+			flowInput.Children[alias] = &types.FlowOutput{
+				Data:     nil,
+				Function: functionName,
+			}
+		}
+
+		// Create a new request body
+		newRequestBody, _ := json.Marshal(flowInput)
+
+		// Replace the existing request body with the new one
+		r.Body = io.NopCloser(bytes.NewBuffer(newRequestBody))
+
+		// Execute the target flow
+		proxyRequest(w, r, proxyClient, resolver)
 	}
 }
 
@@ -245,12 +316,4 @@ func getContentType(request http.Header, proxyResponse http.Header) (headerConte
 	}
 
 	return headerContentType
-}
-
-func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows types.Flows) http.HandlerFunc {
-	fmt.Println("Creating new flow handler.")
-	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("the flow proxy handler is working properly.")
-		fmt.Printf("body is: %+v\n", r.Body)
-	}
 }
