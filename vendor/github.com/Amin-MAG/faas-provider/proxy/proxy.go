@@ -133,16 +133,57 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 
 		// Save arguments of body
 		flowInput.Args = requestBody
+		flowInput.Children = make(map[string]*types.FlowOutput)
 
 		// Iterate the children of the node (function)
 		for alias, child := range flow.Children {
 			// Recursively run the flow for these nodes
 			fmt.Printf("processing the %s: [%+v], a child of %s\n", alias, child, functionName)
 
+			// Grabbing the arguments of child
+			var args map[string]interface{}
+			argsMap, exist := flow.Args.Functions[alias]
+			if !exist {
+				fmt.Printf("error in mapping the args of function %s: there is no map\n", alias)
+			}
+			for argField, mapField := range argsMap {
+				args[argField] = flowInput.Args[mapField]
+			}
+
+			// Proxy the child function
+			childRequestBody, err := json.Marshal(args)
+			if err != nil {
+				fmt.Printf("error in marshalling args of function %s: %s\n", alias, err.Error())
+			}
+			req, err := http.NewRequest(
+				"POST",
+				fmt.Sprintf("localhost:8081/flow/%s", child.Function),
+				bytes.NewBuffer(childRequestBody),
+			)
+			if err != nil {
+				fmt.Printf("error in creating new request of function %s: %s\n", alias, err.Error())
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			// Do the request
+			client := &http.Client{}
+			resp, _ := client.Do(req)
+			if err != nil {
+				fmt.Printf("error in doing the request of function %s: %s\n", alias, err.Error())
+			}
+
+			// Read the response body
+			var data map[string]interface{}
+			childResponseBody, _ := io.ReadAll(resp.Body)
+			err = json.Unmarshal(childResponseBody, &data)
+			if err != nil {
+				fmt.Printf("error in unmarshalling the response of function %s: %s\n", alias, err.Error())
+			}
+
 			// Save the responses
 			flowInput.Children[alias] = &types.FlowOutput{
-				Data:     nil,
-				Function: functionName,
+				Data:     data,
+				Function: child.Function,
 			}
 		}
 
