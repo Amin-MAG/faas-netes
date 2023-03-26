@@ -173,7 +173,7 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 			}
 
 			// Read the response body
-			var data map[string]interface{}
+			data := make(map[string]interface{})
 			childResponseBody, _ := io.ReadAll(resp.Body)
 			err = json.Unmarshal(childResponseBody, &data)
 			if err != nil {
