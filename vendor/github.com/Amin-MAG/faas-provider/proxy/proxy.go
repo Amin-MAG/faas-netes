@@ -141,7 +141,7 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 			fmt.Printf("processing the %s: [%+v], a child of %s\n", alias, child, functionName)
 
 			// Grabbing the arguments of child
-			var args map[string]interface{}
+			args := make(map[string]interface{})
 			argsMap, exist := flow.Args.Functions[alias]
 			if !exist {
 				fmt.Printf("error in mapping the args of function %s: there is no map\n", alias)
