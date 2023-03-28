@@ -95,7 +95,6 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 
 	proxyClient := NewProxyClientFromConfig(config)
 
-	fmt.Println("Creating new flow handler.")
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("the flow proxy handler is working properly.")
 		fmt.Printf("body is: %+v\n", r.Body)
@@ -142,11 +141,7 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 
 			// Grabbing the arguments of child
 			args := make(map[string]interface{})
-			argsMap, exist := flow.Args.Functions[alias]
-			if !exist {
-				fmt.Printf("error in mapping the args of function %s: there is no map\n", alias)
-			}
-			for argField, mapField := range argsMap {
+			for argField, mapField := range child.ArgsMap {
 				args[argField] = flowInput.Args[mapField]
 			}
 

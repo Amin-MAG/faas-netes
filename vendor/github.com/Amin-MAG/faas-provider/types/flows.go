@@ -1,12 +1,12 @@
 package types
 
 type FlowChild struct {
-	Function string `json:"function"`
+	ArgsMap  map[string]string `json:"args_map"`
+	Function string            `json:"function"`
 }
 
 type Args struct {
-	Main      []string                     `json:"main"`
-	Functions map[string]map[string]string `json:"functions"`
+	Main []string `json:"main"`
 }
 
 type Flow struct {
