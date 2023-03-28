@@ -157,7 +157,7 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 			}
 			req, err := http.NewRequest(
 				"POST",
-				fmt.Sprintf("localhost:8081/flow/%s", child.Function),
+				fmt.Sprintf("http://127.0.0.1:8081/flow/%s", child.Function),
 				bytes.NewBuffer(childRequestBody),
 			)
 			if err != nil {
@@ -167,14 +167,14 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 
 			// Do the request
 			client := &http.Client{}
-			resp, _ := client.Do(req)
+			resp, err := client.Do(req)
 			if err != nil {
 				fmt.Printf("error in doing the request of function %s: %s\n", alias, err.Error())
 			}
 
 			// Read the response body
 			data := make(map[string]interface{})
-			childResponseBody, _ := io.ReadAll(resp.Body)
+			childResponseBody, err := io.ReadAll(resp.Body)
 			err = json.Unmarshal(childResponseBody, &data)
 			if err != nil {
 				fmt.Printf("error in unmarshalling the response of function %s: %s\n", alias, err.Error())
