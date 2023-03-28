@@ -5,12 +5,8 @@ type FlowChild struct {
 	Function string            `json:"function"`
 }
 
-type Args struct {
-	Main []string `json:"main"`
-}
-
 type Flow struct {
-	Args     Args                 `json:"args"`
+	Args     []string             `json:"args"`
 	Children map[string]FlowChild `json:"children,omitempty"`
 }
 

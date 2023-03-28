@@ -113,12 +113,6 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 			httputil.Errorf(w, http.StatusBadRequest, "Can not find this kind of function in flows config")
 		}
 
-		// Initialize the input flow variable
-		flowInput := types.FlowInput{
-			Args:     nil,
-			Children: nil,
-		}
-
 		// Read current request body
 		var requestBody map[string]interface{}
 		err := json.NewDecoder(r.Body).Decode(&requestBody)
@@ -130,9 +124,11 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 
 		// TODO: Check required fields for args
 
-		// Save arguments of body
-		flowInput.Args = requestBody
-		flowInput.Children = make(map[string]*types.FlowOutput)
+		// Initialize the input flow variable
+		flowInput := types.FlowInput{
+			Args:     requestBody,
+			Children: make(map[string]*types.FlowOutput),
+		}
 
 		// Iterate the children of the node (function)
 		for alias, child := range flow.Children {
