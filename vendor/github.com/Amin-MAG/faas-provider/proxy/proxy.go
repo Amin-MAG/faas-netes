@@ -175,6 +175,10 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 			// Read the response body
 			data := make(map[string]interface{})
 			childResponseBody, err := io.ReadAll(resp.Body)
+			if err != nil {
+				fmt.Printf("error in reading the response of function %s: %s\n", alias, err.Error())
+			}
+			fmt.Println(string(childResponseBody))
 			err = json.Unmarshal(childResponseBody, &data)
 			if err != nil {
 				fmt.Printf("error in unmarshalling the response of function %s: %s\n", alias, err.Error())
@@ -186,9 +190,11 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 				Function: child.Function,
 			}
 		}
+		fmt.Printf("the flow input of the %s is: %+v\n", functionName, flowInput)
 
 		// Create a new request body
 		newRequestBody, _ := json.Marshal(flowInput)
+		fmt.Printf("new body request of %s is: %+v\n", functionName, newRequestBody)
 
 		// Replace the existing request body with the new one
 		r.Body = io.NopCloser(bytes.NewBuffer(newRequestBody))
