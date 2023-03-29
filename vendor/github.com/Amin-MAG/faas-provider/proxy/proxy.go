@@ -7,21 +7,23 @@
 //
 // openfaas-provider has implemented a standard HTTP HandlerFunc that will handle setting
 // timeout values, parsing the request path, and copying the request/response correctly.
-// 		bootstrapHandlers := bootTypes.FaaSHandlers{
-// 			FunctionProxy:  proxy.NewHandlerFunc(timeout, resolver),
-// 			DeleteHandler:  handlers.MakeDeleteHandler(clientset),
-// 			DeployHandler:  handlers.MakeDeployHandler(clientset),
-// 			FunctionReader: handlers.MakeFunctionReader(clientset),
-// 			ReplicaReader:  handlers.MakeReplicaReader(clientset),
-// 			ReplicaUpdater: handlers.MakeReplicaUpdater(clientset),
-// 			InfoHandler:    handlers.MakeInfoHandler(),
-// 		}
+//
+//	bootstrapHandlers := bootTypes.FaaSHandlers{
+//		FunctionProxy:  proxy.NewHandlerFunc(timeout, resolver),
+//		DeleteHandler:  handlers.MakeDeleteHandler(clientset),
+//		DeployHandler:  handlers.MakeDeployHandler(clientset),
+//		FunctionReader: handlers.MakeFunctionReader(clientset),
+//		ReplicaReader:  handlers.MakeReplicaReader(clientset),
+//		ReplicaUpdater: handlers.MakeReplicaUpdater(clientset),
+//		InfoHandler:    handlers.MakeInfoHandler(),
+//	}
 //
 // proxy.NewHandlerFunc is optional, but does simplify the logic of your provider.
 package proxy
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,6 +36,7 @@ import (
 	"github.com/Amin-MAG/faas-provider/httputil"
 	"github.com/Amin-MAG/faas-provider/types"
 	"github.com/gorilla/mux"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -53,11 +56,11 @@ type BaseURLResolver interface {
 // NewHandlerFunc creates a standard http.HandlerFunc to proxy function requests.
 // The returned http.HandlerFunc will ensure:
 //
-// 	- proper proxy request timeouts
-// 	- proxy requests for GET, POST, PATCH, PUT, and DELETE
-// 	- path parsing including support for extracing the function name, sub-paths, and query paremeters
-// 	- passing and setting the `X-Forwarded-Host` and `X-Forwarded-For` headers
-// 	- logging errors and proxy request timing to stdout
+//   - proper proxy request timeouts
+//   - proxy requests for GET, POST, PATCH, PUT, and DELETE
+//   - path parsing including support for extracing the function name, sub-paths, and query paremeters
+//   - passing and setting the `X-Forwarded-Host` and `X-Forwarded-For` headers
+//   - logging errors and proxy request timing to stdout
 //
 // Note that this will panic if `resolver` is nil.
 func NewHandlerFunc(config types.FaaSConfig, resolver BaseURLResolver) http.HandlerFunc {
@@ -88,7 +91,7 @@ func NewHandlerFunc(config types.FaaSConfig, resolver BaseURLResolver) http.Hand
 	}
 }
 
-func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows types.Flows) http.HandlerFunc {
+func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver BaseURLResolver, flows types.Flows) http.HandlerFunc {
 	if resolver == nil {
 		panic("NewFlowHandler: empty proxy handler resolver, cannot be nil")
 	}
@@ -141,6 +144,33 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 				args[argField] = flowInput.Args[mapField]
 			}
 
+			// Try caching if it is enabled for function
+			if config.EnableCaching && flows.Flows[child.Function].Caching {
+				reqBody, err := json.Marshal(args)
+				if err != nil {
+					fmt.Printf("error in marshalling args of function  %s for caching: %s\n", alias, err.Error())
+				}
+
+				// Generate SHA1 hash of the JSON string
+				hashBytes := sha1.Sum(reqBody)
+				hashString := fmt.Sprintf("%x", hashBytes)
+
+				// Try to get cached response from Redis
+				cachedResponseBytes, err := redisClient.Get(r.Context(), hashString).Bytes()
+				if err == nil {
+					// If cached response exists, parse the JSON string and return it
+					var data map[string]interface{}
+					err = json.Unmarshal(cachedResponseBytes, &data)
+					if err == nil {
+						flowInput.Children[alias] = &types.FlowOutput{
+							Data:     data,
+							Function: child.Function,
+						}
+						continue
+					}
+				}
+			}
+
 			// Proxy the child function
 			childRequestBody, err := json.Marshal(args)
 			if err != nil {
@@ -169,6 +199,21 @@ func NewFlowHandler(config types.FaaSConfig, resolver BaseURLResolver, flows typ
 			if err != nil {
 				fmt.Printf("error in reading the response of function %s: %s\n", alias, err.Error())
 			}
+
+			if config.EnableCaching && flows.Flows[child.Function].Caching {
+				reqBody, err := json.Marshal(args)
+				if err != nil {
+					fmt.Printf("error in marshalling args of function  %s for caching: %s\n", alias, err.Error())
+				}
+
+				// Generate SHA1 hash of the JSON string
+				hashBytes := sha1.Sum(reqBody)
+				hashString := fmt.Sprintf("%x", hashBytes)
+
+				// Save the response
+				redisClient.SetEx(r.Context(), hashString, childResponseBody, 10*time.Minute)
+			}
+
 			fmt.Println(string(childResponseBody))
 			err = json.Unmarshal(childResponseBody, &data)
 			if err != nil {

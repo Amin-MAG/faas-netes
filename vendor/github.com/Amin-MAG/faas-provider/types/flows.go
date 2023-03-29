@@ -8,6 +8,7 @@ type FlowChild struct {
 type Flow struct {
 	Args     []string             `json:"args"`
 	Children map[string]FlowChild `json:"children,omitempty"`
+	Caching  bool                 `json:"caching"`
 }
 
 type Flows struct {

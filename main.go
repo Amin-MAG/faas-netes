@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"log"
 	"os"
 	"time"
@@ -140,6 +141,17 @@ func main() {
 
 	factory := k8s.NewFunctionFactory(kubeClient, deployConfig, faasClient.OpenfaasV1())
 
+	// Create a Redis client
+	isCachingEnable := os.Getenv("IS_CACHING_ENABLE")
+	if isCachingEnable == "" {
+		isCachingEnable = "false"
+	}
+	config.FaaSConfig.EnableCaching = isCachingEnable == "true"
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+		DB:   0,
+	})
+
 	// Flows config
 	var flows providertypes.Flows
 	// Read the flow configuration file
@@ -157,6 +169,7 @@ func main() {
 		faasInformerFactory: faasInformerFactory,
 		kubeClient:          kubeClient,
 		faasClient:          faasClient,
+		redisClient:         redisClient,
 	}
 
 	runController(setup)
@@ -221,7 +234,7 @@ func runController(setup serverSetup) {
 		FunctionProxy: proxy.NewHandlerFunc(config.FaaSConfig, functionLookup),
 		// TODO: change the function lookup to the workflow lookup
 		Flows:                handlers.MakeFlowsHandler(setup.flows),
-		FlowProxy:            proxy.NewFlowHandler(config.FaaSConfig, functionLookup, setup.flows),
+		FlowProxy:            proxy.NewFlowHandler(config.FaaSConfig, setup.redisClient, functionLookup, setup.flows),
 		DeleteHandler:        handlers.MakeDeleteHandler(config.DefaultFunctionNamespace, kubeClient),
 		DeployHandler:        handlers.MakeDeployHandler(config.DefaultFunctionNamespace, factory),
 		FunctionReader:       handlers.MakeFunctionReader(config.DefaultFunctionNamespace, listers.DeploymentInformer.Lister()),
@@ -247,6 +260,7 @@ type serverSetup struct {
 	flows               providertypes.Flows
 	kubeClient          *kubernetes.Clientset
 	faasClient          *clientset.Clientset
+	redisClient         *redis.Client
 	functionFactory     k8s.FunctionFactory
 	kubeInformerFactory kubeinformers.SharedInformerFactory
 	faasInformerFactory informers.SharedInformerFactory
