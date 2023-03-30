@@ -100,7 +100,8 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("the flow proxy handler is working properly.")
-		fmt.Printf("body is: %+v\n", r.Body)
+		body, _ := io.ReadAll(r.Body)
+		fmt.Printf("body is: %+v\n", string(body))
 
 		// Fetch the name of the node (function)
 		pathVars := mux.Vars(r)
@@ -150,6 +151,7 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 				// If cached response exists, parse the JSON string and return it
 				w.WriteHeader(http.StatusOK)
 				_, _ = io.Copy(w, bytes.NewBuffer(cachedResponseBytes))
+				fmt.Printf("get the response of %s from redis\n", functionName)
 				return
 			}
 		}
@@ -186,6 +188,9 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 			if err != nil {
 				fmt.Printf("error in doing the request of function %s: %s\n", alias, err.Error())
 			}
+			if resp.StatusCode != http.StatusOK {
+				fmt.Printf("failed request of %s: %s\n", alias, resp.Body)
+			}
 
 			// Read the response body
 			data := make(map[string]interface{})
@@ -210,7 +215,7 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 
 		// Create a new request body
 		newRequestBody, _ := json.Marshal(flowInput)
-		fmt.Printf("new body request of %s is: %+v\n", functionName, newRequestBody)
+		fmt.Printf("new body request of %s is: %s\n", functionName, string(newRequestBody))
 
 		// Replace the existing request body with the new one
 		r.Body = io.NopCloser(bytes.NewBuffer(newRequestBody))
@@ -232,6 +237,7 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 			// Save the response
 			responseBytes, _ := io.ReadAll(r.Body)
 			redisClient.SetEx(r.Context(), hashString, responseBytes, time.Duration(flow.CacheTTL)*time.Second)
+			fmt.Printf("caching the response of %s in redis: %s\n", functionName, string(responseBytes))
 		}
 	}
 }
