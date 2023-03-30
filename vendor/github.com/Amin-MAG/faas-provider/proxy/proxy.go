@@ -83,7 +83,7 @@ func NewHandlerFunc(config types.FaaSConfig, resolver BaseURLResolver) http.Hand
 			http.MethodGet,
 			http.MethodOptions,
 			http.MethodHead:
-			proxyRequest(w, r, proxyClient, resolver)
+			proxyRequest(w, r, proxyClient, resolver, false)
 
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -132,12 +132,13 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 			Children: make(map[string]*types.FlowOutput),
 		}
 
-		// Try caching if it is enabled for function
+		// Try find the cache if it is enabled for function
 		if config.EnableCaching && flow.Caching {
 			reqBody, err := json.Marshal(requestBody)
 			if err != nil {
 				fmt.Printf("error in marshalling args of function %s for caching: %s\n", functionName, err.Error())
 			}
+			fmt.Printf("searching caching key of the %s function is %s", functionName, string(reqBody))
 
 			// Generate SHA1 hash of the JSON string
 			hashBytes := sha1.Sum(reqBody)
@@ -220,7 +221,7 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 		r.Body = io.NopCloser(bytes.NewBuffer(newRequestBody))
 
 		// Execute the target flow
-		responseBody := proxyRequest(w, r, proxyClient, resolver)
+		cacheResponse := proxyRequest(w, r, proxyClient, resolver, config.EnableCaching && flow.Caching)
 
 		// Cache the response of the function
 		if config.EnableCaching && flow.Caching {
@@ -228,13 +229,14 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 			if err != nil {
 				fmt.Printf("error in marshalling args of function %s for caching: %s\n", functionName, err.Error())
 			}
+			fmt.Printf("the caching key of the %s function is %s", functionName, string(reqBody))
 
 			// Generate SHA1 hash of the JSON string
 			hashBytes := sha1.Sum(reqBody)
 			hashString := fmt.Sprintf("%x", hashBytes)
 
 			// Save the response
-			responseBytes, _ := io.ReadAll(*responseBody)
+			responseBytes, _ := io.ReadAll(cacheResponse)
 			redisClient.SetEx(r.Context(), hashString, responseBytes, time.Duration(flow.CacheTTL)*time.Second)
 			fmt.Printf("caching the response of %s in redis: %s\n", functionName, string(responseBytes))
 		}
@@ -286,7 +288,7 @@ func NewProxyClient(timeout time.Duration, maxIdleConns int, maxIdleConnsPerHost
 }
 
 // proxyRequest handles the actual resolution of and then request to the function service.
-func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient *http.Client, resolver BaseURLResolver) *io.ReadCloser {
+func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient *http.Client, resolver BaseURLResolver, returnBody bool) *bytes.Reader {
 	ctx := originalReq.Context()
 
 	pathVars := mux.Vars(originalReq)
@@ -336,11 +338,21 @@ func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient 
 	w.Header().Set("Content-Type", getContentType(originalReq.Header, response.Header))
 
 	w.WriteHeader(response.StatusCode)
+
+	var cacheReader *bytes.Reader
 	if response.Body != nil {
-		io.Copy(w, response.Body)
+		if !returnBody {
+			io.Copy(w, response.Body)
+		} else {
+			responseBody, _ := io.ReadAll(response.Body)
+			responseReader := bytes.NewReader(responseBody)
+			cacheReader = bytes.NewReader(responseBody)
+
+			io.Copy(w, responseReader)
+		}
 	}
 
-	return &response.Body
+	return cacheReader
 }
 
 // buildProxyRequest creates a request object for the proxy request, it will ensure that
