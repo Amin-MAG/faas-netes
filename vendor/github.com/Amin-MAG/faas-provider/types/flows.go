@@ -9,6 +9,7 @@ type Flow struct {
 	Args     []string             `json:"args"`
 	Children map[string]FlowChild `json:"children,omitempty"`
 	Caching  bool                 `json:"caching"`
+	CacheTTL uint                 `json:"cache_ttl"`
 }
 
 type Flows struct {
