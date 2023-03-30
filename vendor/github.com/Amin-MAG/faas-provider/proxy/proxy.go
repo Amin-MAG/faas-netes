@@ -100,8 +100,6 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("the flow proxy handler is working properly.")
-		body, _ := io.ReadAll(r.Body)
-		fmt.Printf("body is: %+v\n", string(body))
 
 		// Fetch the name of the node (function)
 		pathVars := mux.Vars(r)
