@@ -148,8 +148,9 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 			if err == nil {
 				// If cached response exists, parse the JSON string and return it
 				w.WriteHeader(http.StatusOK)
+				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.Copy(w, bytes.NewBuffer(cachedResponseBytes))
-				fmt.Printf("get the response of %s from redis\n", functionName)
+				fmt.Printf("get the response of %s from redis: %s\n", functionName, string(cachedResponseBytes))
 				return
 			}
 		}
@@ -219,7 +220,7 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 		r.Body = io.NopCloser(bytes.NewBuffer(newRequestBody))
 
 		// Execute the target flow
-		proxyRequest(w, r, proxyClient, resolver)
+		responseBody := proxyRequest(w, r, proxyClient, resolver)
 
 		// Cache the response of the function
 		if config.EnableCaching && flow.Caching {
@@ -233,7 +234,7 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 			hashString := fmt.Sprintf("%x", hashBytes)
 
 			// Save the response
-			responseBytes, _ := io.ReadAll(r.Body)
+			responseBytes, _ := io.ReadAll(*responseBody)
 			redisClient.SetEx(r.Context(), hashString, responseBytes, time.Duration(flow.CacheTTL)*time.Second)
 			fmt.Printf("caching the response of %s in redis: %s\n", functionName, string(responseBytes))
 		}
@@ -285,14 +286,14 @@ func NewProxyClient(timeout time.Duration, maxIdleConns int, maxIdleConnsPerHost
 }
 
 // proxyRequest handles the actual resolution of and then request to the function service.
-func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient *http.Client, resolver BaseURLResolver) {
+func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient *http.Client, resolver BaseURLResolver) *io.ReadCloser {
 	ctx := originalReq.Context()
 
 	pathVars := mux.Vars(originalReq)
 	functionName := pathVars["name"]
 	if functionName == "" {
 		httputil.Errorf(w, http.StatusBadRequest, "Provide function name in the request path")
-		return
+		return nil
 	}
 
 	functionAddr, resolveErr := resolver.Resolve(functionName)
@@ -300,13 +301,13 @@ func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient 
 		// TODO: Should record the 404/not found error in Prometheus.
 		log.Printf("resolver error: no endpoints for %s: %s\n", functionName, resolveErr.Error())
 		httputil.Errorf(w, http.StatusServiceUnavailable, "No endpoints available for: %s.", functionName)
-		return
+		return nil
 	}
 
 	proxyReq, err := buildProxyRequest(originalReq, functionAddr, pathVars["params"])
 	if err != nil {
 		httputil.Errorf(w, http.StatusInternalServerError, "Failed to resolve service: %s.", functionName)
-		return
+		return nil
 	}
 
 	if proxyReq.Body != nil {
@@ -321,7 +322,7 @@ func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient 
 		log.Printf("error with proxy request to: %s, %s\n", proxyReq.URL.String(), err.Error())
 
 		httputil.Errorf(w, http.StatusInternalServerError, "Can't reach service for: %s.", functionName)
-		return
+		return nil
 	}
 
 	if response.Body != nil {
@@ -338,6 +339,8 @@ func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient 
 	if response.Body != nil {
 		io.Copy(w, response.Body)
 	}
+
+	return &response.Body
 }
 
 // buildProxyRequest creates a request object for the proxy request, it will ensure that
