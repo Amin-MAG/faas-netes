@@ -170,8 +170,8 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 
 			// Creating the URL of child for internal and third parties
 			var destURL string
-			if flow.IsThirdParty {
-				destURL = *flow.ThirdPartyURL
+			if flows.Flows[child.Function].IsThirdParty {
+				destURL = *flows.Flows[child.Function].ThirdPartyURL
 			} else {
 				destURL = fmt.Sprintf("http://127.0.0.1:8081/flow/%s", child.Function)
 			}
