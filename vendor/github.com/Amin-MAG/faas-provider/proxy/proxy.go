@@ -193,17 +193,11 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 			}
 
 			// Read the response body
-			data := make(map[string]interface{})
-			childResponseBody, err := io.ReadAll(resp.Body)
+			data, err := io.ReadAll(resp.Body)
 			if err != nil {
 				fmt.Printf("error in reading the response of function %s: %s\n", alias, err.Error())
 			}
-
-			fmt.Println(string(childResponseBody))
-			err = json.Unmarshal(childResponseBody, &data)
-			if err != nil {
-				fmt.Printf("error in unmarshalling the response of function %s: %s\n", alias, err.Error())
-			}
+			fmt.Println(string(data))
 
 			// Save the responses
 			flowInput.Children[alias] = &types.FlowOutput{
