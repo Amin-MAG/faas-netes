@@ -134,6 +134,7 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 
 		// Try find the cache if it is enabled for function
 		if config.EnableCaching && flow.Caching {
+			requestBody["openfaas_flow_function_name"] = functionName
 			reqBody, err := json.Marshal(requestBody)
 			if err != nil {
 				fmt.Printf("error in marshalling args of function %s for caching: %s\n", functionName, err.Error())
@@ -167,6 +168,14 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 				args[argField] = flowInput.Args[mapField]
 			}
 
+			// Creating the URL of child for internal and third parties
+			var destURL string
+			if flow.IsThirdParty {
+				destURL = *flow.ThirdPartyURL
+			} else {
+				destURL = fmt.Sprintf("http://127.0.0.1:8081/flow/%s", child.Function)
+			}
+
 			// Proxy the child function
 			childRequestBody, err := json.Marshal(args)
 			if err != nil {
@@ -174,7 +183,7 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 			}
 			req, err := http.NewRequest(
 				"POST",
-				fmt.Sprintf("http://127.0.0.1:8081/flow/%s", child.Function),
+				destURL,
 				bytes.NewBuffer(childRequestBody),
 			)
 			if err != nil {
@@ -219,7 +228,9 @@ func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver
 
 		// Cache the response of the function
 		if config.EnableCaching && flow.Caching {
-			reqBody, err := json.Marshal(flowInput.Args)
+			requestBody = flowInput.Args
+			requestBody["openfaas_flow_function_name"] = functionName
+			reqBody, err := json.Marshal(requestBody)
 			if err != nil {
 				fmt.Printf("error in marshalling args of function %s for caching: %s\n", functionName, err.Error())
 			}

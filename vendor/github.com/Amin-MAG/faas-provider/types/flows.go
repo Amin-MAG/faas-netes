@@ -6,10 +6,12 @@ type FlowChild struct {
 }
 
 type Flow struct {
-	Args     []string             `json:"args"`
-	Children map[string]FlowChild `json:"children,omitempty"`
-	Caching  bool                 `json:"caching"`
-	CacheTTL uint                 `json:"cache_ttl"`
+	Args          []string             `json:"args"`
+	Children      map[string]FlowChild `json:"children,omitempty"`
+	Caching       bool                 `json:"caching"`
+	CacheTTL      uint                 `json:"cache_ttl"`
+	IsThirdParty  bool                 `json:"is_third_party"`
+	ThirdPartyURL *string              `json:"third_party_url"`
 }
 
 type Flows struct {
