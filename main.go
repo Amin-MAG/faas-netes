@@ -21,6 +21,7 @@ import (
 	informers "github.com/openfaas/faas-netes/pkg/client/informers/externalversions"
 	v1 "github.com/openfaas/faas-netes/pkg/client/informers/externalversions/openfaas/v1"
 	"github.com/openfaas/faas-netes/pkg/config"
+	"github.com/openfaas/faas-netes/pkg/controller"
 	"github.com/openfaas/faas-netes/pkg/handlers"
 	"github.com/openfaas/faas-netes/pkg/k8s"
 	"github.com/openfaas/faas-netes/pkg/signals"
@@ -224,6 +225,7 @@ func runController(setup serverSetup) {
 	stopCh := signals.SetupSignalHandler()
 	operator := false
 	listers := startInformers(setup, stopCh, operator)
+	controller.RegisterEventHandlers(listers.DeploymentInformer, kubeClient, config.DefaultFunctionNamespace)
 
 	// TODO: Get the config map of workflow configuration and connections and pass it to the FlowProxy
 

@@ -1,4 +1,4 @@
-FROM ghcr.io/openfaas/license-check:0.4.1 as license-check
+FROM ghcr.io/openfaas/license-check:0.4.2 as license-check
 
 FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:1.19 as build
 
@@ -27,7 +27,7 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
         --ldflags "-s -w \
         -X github.com/openfaas/faas-netes/version.GitCommit=${GIT_COMMIT}\
         -X github.com/openfaas/faas-netes/version.Version=${VERSION}" \
-        -a -installsuffix cgo -o faas-netes .
+        -o faas-netes .
 
 FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine:3.17 as ship
 LABEL org.label-schema.license="MIT" \
