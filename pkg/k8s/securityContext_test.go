@@ -4,7 +4,7 @@
 package k8s
 
 import (
-	types "github.com/openfaas/faas-provider/types"
+	types "github.com/Amin-MAG/faas-provider/types"
 
 	"testing"
 

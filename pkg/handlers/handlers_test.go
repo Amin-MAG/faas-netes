@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	types "github.com/openfaas/faas-provider/types"
+	types "github.com/Amin-MAG/faas-provider/types"
 )
 
 func Test_validateService_ValidCharacters(t *testing.T) {

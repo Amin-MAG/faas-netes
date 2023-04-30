@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/openfaas/faas-provider/types"
+	"github.com/Amin-MAG/faas-provider/types"
 )
 
 func Test_InfoHandler(t *testing.T) {

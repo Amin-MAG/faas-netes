@@ -12,8 +12,8 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/Amin-MAG/faas-provider/types"
 	"github.com/gorilla/mux"
-	"github.com/openfaas/faas-provider/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )

@@ -16,6 +16,11 @@ type FaaSHandlers struct {
 	// use the standard OpenFaaS proxy implementation or provide completely custom proxy logic.
 	FunctionProxy http.HandlerFunc
 
+	// Workflow Proxy
+	Flows      http.HandlerFunc
+	FlowProxy  http.HandlerFunc
+	FlowReader http.HandlerFunc
+
 	FunctionReader http.HandlerFunc
 	DeployHandler  http.HandlerFunc
 
@@ -57,6 +62,8 @@ type FaaSConfig struct {
 	MaxIdleConns int
 	// MaxIdleConnsPerHost with a default value of 1024, can be used for tuning HTTP proxy performance.
 	MaxIdleConnsPerHost int
+	// EnableCaching
+	EnableCaching bool
 }
 
 // GetReadTimeout is a helper to safely return the configured ReadTimeout or the default value of 10s

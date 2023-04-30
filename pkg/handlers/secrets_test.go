@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	types "github.com/openfaas/faas-provider/types"
+	types "github.com/Amin-MAG/faas-provider/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	testclient "k8s.io/client-go/kubernetes/fake"
 )

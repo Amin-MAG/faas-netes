@@ -6,8 +6,8 @@ package handlers
 import (
 	"testing"
 
+	types "github.com/Amin-MAG/faas-provider/types"
 	"github.com/openfaas/faas-netes/pkg/k8s"
-	types "github.com/openfaas/faas-provider/types"
 	"k8s.io/client-go/kubernetes/fake"
 
 	apiv1 "k8s.io/api/core/v1"

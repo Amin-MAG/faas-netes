@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/openfaas/faas-provider/types"
+	"github.com/Amin-MAG/faas-provider/types"
 )
 
 const (

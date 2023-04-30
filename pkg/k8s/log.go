@@ -8,7 +8,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/openfaas/faas-provider/logs"
+	"github.com/Amin-MAG/faas-provider/logs"
 	"k8s.io/client-go/kubernetes"
 )
 

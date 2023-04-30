@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strconv"
 
-	types "github.com/openfaas/faas-provider/types"
+	types "github.com/Amin-MAG/faas-provider/types"
 )
 
 // Regex for RFC-1123 validation:

@@ -5,12 +5,18 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"log"
 	"os"
 	"time"
 
+	faasProvider "github.com/Amin-MAG/faas-provider"
+	"github.com/Amin-MAG/faas-provider/logs"
+	"github.com/Amin-MAG/faas-provider/proxy"
+	providertypes "github.com/Amin-MAG/faas-provider/types"
 	clientset "github.com/openfaas/faas-netes/pkg/client/clientset/versioned"
 	informers "github.com/openfaas/faas-netes/pkg/client/informers/externalversions"
 	v1 "github.com/openfaas/faas-netes/pkg/client/informers/externalversions/openfaas/v1"
@@ -20,10 +26,6 @@ import (
 	"github.com/openfaas/faas-netes/pkg/k8s"
 	"github.com/openfaas/faas-netes/pkg/signals"
 	version "github.com/openfaas/faas-netes/version"
-	faasProvider "github.com/openfaas/faas-provider"
-	"github.com/openfaas/faas-provider/logs"
-	"github.com/openfaas/faas-provider/proxy"
-	providertypes "github.com/openfaas/faas-provider/types"
 
 	kubeinformers "k8s.io/client-go/informers"
 	v1apps "k8s.io/client-go/informers/apps/v1"
@@ -45,6 +47,7 @@ import (
 func main() {
 	var kubeconfig string
 	var masterURL string
+	var flowConfigFile string
 	var (
 		operator,
 		verbose bool
@@ -57,6 +60,8 @@ func main() {
 		"The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 
 	flag.BoolVar(&operator, "operator", false, "Use the operator mode instead of faas-netes")
+	flag.StringVar(&flowConfigFile, "flowconfig", "/etc/open-faas/flows/config.json",
+		"Path to a flow config file")
 	flag.Parse()
 
 	if operator {
@@ -137,13 +142,35 @@ func main() {
 
 	factory := k8s.NewFunctionFactory(kubeClient, deployConfig, faasClient.OpenfaasV1())
 
+	// Create a Redis client
+	isCachingEnable := os.Getenv("IS_CACHING_ENABLE")
+	if isCachingEnable == "" {
+		isCachingEnable = "false"
+	}
+	config.FaaSConfig.EnableCaching = isCachingEnable == "true"
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+		DB:   0,
+	})
+
+	// Flows config
+	var flows providertypes.Flows
+	// Read the flow configuration file
+	flowsData, err := os.ReadFile(flowConfigFile)
+	if err != nil {
+		log.Fatalf("Error creating flow configuration: %s", err.Error())
+	}
+	_ = json.Unmarshal([]byte(flowsData), &flows)
+
 	setup := serverSetup{
 		config:              config,
+		flows:               flows,
 		functionFactory:     factory,
 		kubeInformerFactory: kubeInformerFactory,
 		faasInformerFactory: faasInformerFactory,
 		kubeClient:          kubeClient,
 		faasClient:          faasClient,
+		redisClient:         redisClient,
 	}
 
 	runController(setup)
@@ -200,13 +227,20 @@ func runController(setup serverSetup) {
 	listers := startInformers(setup, stopCh, operator)
 	controller.RegisterEventHandlers(listers.DeploymentInformer, kubeClient, config.DefaultFunctionNamespace)
 
+	// TODO: Get the config map of workflow configuration and connections and pass it to the FlowProxy
+
 	functionLookup := k8s.NewFunctionLookup(config.DefaultFunctionNamespace, listers.EndpointsInformer.Lister())
+	// TODO: define the flowLookup with a new type here
 
 	bootstrapHandlers := providertypes.FaaSHandlers{
-		FunctionProxy:        proxy.NewHandlerFunc(config.FaaSConfig, functionLookup),
+		FunctionProxy: proxy.NewHandlerFunc(config.FaaSConfig, functionLookup),
+		// TODO: change the function lookup to the workflow lookup
+		Flows:                handlers.MakeFlowsHandler(setup.flows),
+		FlowProxy:            proxy.NewFlowHandler(config.FaaSConfig, setup.redisClient, functionLookup, setup.flows),
 		DeleteHandler:        handlers.MakeDeleteHandler(config.DefaultFunctionNamespace, kubeClient),
 		DeployHandler:        handlers.MakeDeployHandler(config.DefaultFunctionNamespace, factory),
 		FunctionReader:       handlers.MakeFunctionReader(config.DefaultFunctionNamespace, listers.DeploymentInformer.Lister()),
+		FlowReader:           handlers.MakeFlowReader(config.DefaultFunctionNamespace, nil),
 		ReplicaReader:        handlers.MakeReplicaReader(config.DefaultFunctionNamespace, listers.DeploymentInformer.Lister()),
 		ReplicaUpdater:       handlers.MakeReplicaUpdater(config.DefaultFunctionNamespace, kubeClient),
 		UpdateHandler:        handlers.MakeUpdateHandler(config.DefaultFunctionNamespace, factory),
@@ -225,8 +259,10 @@ func runController(setup serverSetup) {
 // faas-netes controller or operator
 type serverSetup struct {
 	config              config.BootstrapConfig
+	flows               providertypes.Flows
 	kubeClient          *kubernetes.Clientset
 	faasClient          *clientset.Clientset
+	redisClient         *redis.Client
 	functionFactory     k8s.FunctionFactory
 	kubeInformerFactory kubeinformers.SharedInformerFactory
 	faasInformerFactory informers.SharedInformerFactory

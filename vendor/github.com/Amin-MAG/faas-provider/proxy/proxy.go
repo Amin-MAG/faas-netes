@@ -7,20 +7,25 @@
 //
 // openfaas-provider has implemented a standard HTTP HandlerFunc that will handle setting
 // timeout values, parsing the request path, and copying the request/response correctly.
-// 		bootstrapHandlers := bootTypes.FaaSHandlers{
-// 			FunctionProxy:  proxy.NewHandlerFunc(timeout, resolver),
-// 			DeleteHandler:  handlers.MakeDeleteHandler(clientset),
-// 			DeployHandler:  handlers.MakeDeployHandler(clientset),
-// 			FunctionReader: handlers.MakeFunctionReader(clientset),
-// 			ReplicaReader:  handlers.MakeReplicaReader(clientset),
-// 			ReplicaUpdater: handlers.MakeReplicaUpdater(clientset),
-// 			InfoHandler:    handlers.MakeInfoHandler(),
-// 		}
+//
+//	bootstrapHandlers := bootTypes.FaaSHandlers{
+//		FunctionProxy:  proxy.NewHandlerFunc(timeout, resolver),
+//		DeleteHandler:  handlers.MakeDeleteHandler(clientset),
+//		DeployHandler:  handlers.MakeDeployHandler(clientset),
+//		FunctionReader: handlers.MakeFunctionReader(clientset),
+//		ReplicaReader:  handlers.MakeReplicaReader(clientset),
+//		ReplicaUpdater: handlers.MakeReplicaUpdater(clientset),
+//		InfoHandler:    handlers.MakeInfoHandler(),
+//	}
 //
 // proxy.NewHandlerFunc is optional, but does simplify the logic of your provider.
 package proxy
 
 import (
+	"bytes"
+	"crypto/sha1"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -28,9 +33,10 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/Amin-MAG/faas-provider/httputil"
+	"github.com/Amin-MAG/faas-provider/types"
 	"github.com/gorilla/mux"
-	"github.com/openfaas/faas-provider/httputil"
-	"github.com/openfaas/faas-provider/types"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -50,11 +56,11 @@ type BaseURLResolver interface {
 // NewHandlerFunc creates a standard http.HandlerFunc to proxy function requests.
 // The returned http.HandlerFunc will ensure:
 //
-// 	- proper proxy request timeouts
-// 	- proxy requests for GET, POST, PATCH, PUT, and DELETE
-// 	- path parsing including support for extracing the function name, sub-paths, and query paremeters
-// 	- passing and setting the `X-Forwarded-Host` and `X-Forwarded-For` headers
-// 	- logging errors and proxy request timing to stdout
+//   - proper proxy request timeouts
+//   - proxy requests for GET, POST, PATCH, PUT, and DELETE
+//   - path parsing including support for extracing the function name, sub-paths, and query paremeters
+//   - passing and setting the `X-Forwarded-Host` and `X-Forwarded-For` headers
+//   - logging errors and proxy request timing to stdout
 //
 // Note that this will panic if `resolver` is nil.
 func NewHandlerFunc(config types.FaaSConfig, resolver BaseURLResolver) http.HandlerFunc {
@@ -77,10 +83,167 @@ func NewHandlerFunc(config types.FaaSConfig, resolver BaseURLResolver) http.Hand
 			http.MethodGet,
 			http.MethodOptions,
 			http.MethodHead:
-			proxyRequest(w, r, proxyClient, resolver)
+			proxyRequest(w, r, proxyClient, resolver, false)
 
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func NewFlowHandler(config types.FaaSConfig, redisClient *redis.Client, resolver BaseURLResolver, flows types.Flows) http.HandlerFunc {
+	if resolver == nil {
+		panic("NewFlowHandler: empty proxy handler resolver, cannot be nil")
+	}
+
+	proxyClient := NewProxyClientFromConfig(config)
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("the flow proxy handler is working properly.")
+
+		// Fetch the name of the node (function)
+		pathVars := mux.Vars(r)
+		functionName := pathVars["name"]
+		if functionName == "" {
+			httputil.Errorf(w, http.StatusBadRequest, "Provide function name in the request path")
+			return
+		}
+
+		// Fetch the flow of the node (function)
+		flow, ok := flows.Flows[functionName]
+		if !ok {
+			httputil.Errorf(w, http.StatusBadRequest, "Can not find this kind of function in flows config")
+		}
+
+		// Read current request body
+		var requestBody map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&requestBody)
+		if err != nil {
+			log.Println("Error decoding JSON request body:", err)
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		// TODO: Check required fields for args
+
+		// Initialize the input flow variable
+		flowInput := types.FlowInput{
+			Args:     requestBody,
+			Children: make(map[string]*types.FlowOutput),
+		}
+
+		// Try find the cache if it is enabled for function
+		if config.EnableCaching && flow.Caching {
+			requestBody["openfaas_flow_function_name"] = functionName
+			reqBody, err := json.Marshal(requestBody)
+			if err != nil {
+				fmt.Printf("error in marshalling args of function %s for caching: %s\n", functionName, err.Error())
+			}
+			fmt.Printf("searching caching key of the %s function is %s", functionName, string(reqBody))
+
+			// Generate SHA1 hash of the JSON string
+			hashBytes := sha1.Sum(reqBody)
+			hashString := fmt.Sprintf("%x", hashBytes)
+
+			// Try to get cached response from Redis
+			cachedResponseBytes, err := redisClient.Get(r.Context(), hashString).Bytes()
+			if err == nil {
+				// If cached response exists, parse the JSON string and return it
+				w.WriteHeader(http.StatusOK)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.Copy(w, bytes.NewBuffer(cachedResponseBytes))
+				fmt.Printf("get the response of %s from redis: %s\n", functionName, string(cachedResponseBytes))
+				return
+			}
+		}
+
+		// Iterate the children of the node (function)
+		for alias, child := range flow.Children {
+			// Recursively run the flow for these nodes
+			fmt.Printf("processing the %s: [%+v], a child of %s\n", alias, child, functionName)
+
+			// Grabbing the arguments of child
+			args := make(map[string]interface{})
+			for argField, mapField := range child.ArgsMap {
+				args[argField] = flowInput.Args[mapField]
+			}
+
+			// Creating the URL of child for internal and third parties
+			var destURL string
+			if flows.Flows[child.Function].IsThirdParty {
+				destURL = *flows.Flows[child.Function].ThirdPartyURL
+			} else {
+				destURL = fmt.Sprintf("http://127.0.0.1:8081/flow/%s", child.Function)
+			}
+
+			// Proxy the child function
+			childRequestBody, err := json.Marshal(args)
+			if err != nil {
+				fmt.Printf("error in marshalling args of function %s: %s\n", alias, err.Error())
+			}
+			req, err := http.NewRequest(
+				"POST",
+				destURL,
+				bytes.NewBuffer(childRequestBody),
+			)
+			if err != nil {
+				fmt.Printf("error in creating new request of function %s: %s\n", alias, err.Error())
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			// Do the request
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				fmt.Printf("error in doing the request of function %s: %s\n", alias, err.Error())
+			}
+			if resp.StatusCode != http.StatusOK {
+				fmt.Printf("failed request of %s: %s\n", alias, resp.Body)
+			}
+
+			// Read the response body
+			data, err := io.ReadAll(resp.Body)
+			if err != nil {
+				fmt.Printf("error in reading the response of function %s: %s\n", alias, err.Error())
+			}
+			fmt.Println(string(data))
+
+			// Save the responses
+			flowInput.Children[alias] = &types.FlowOutput{
+				Data:     data,
+				Function: child.Function,
+			}
+		}
+		fmt.Printf("the flow input of the %s is: %+v\n", functionName, flowInput)
+
+		// Create a new request body
+		newRequestBody, _ := json.Marshal(flowInput)
+		fmt.Printf("new body request of %s is: %s\n", functionName, string(newRequestBody))
+
+		// Replace the existing request body with the new one
+		r.Body = io.NopCloser(bytes.NewBuffer(newRequestBody))
+
+		// Execute the target flow
+		cacheResponse := proxyRequest(w, r, proxyClient, resolver, config.EnableCaching && flow.Caching)
+
+		// Cache the response of the function
+		if config.EnableCaching && flow.Caching {
+			requestBody = flowInput.Args
+			requestBody["openfaas_flow_function_name"] = functionName
+			reqBody, err := json.Marshal(requestBody)
+			if err != nil {
+				fmt.Printf("error in marshalling args of function %s for caching: %s\n", functionName, err.Error())
+			}
+			fmt.Printf("the caching key of the %s function is %s", functionName, string(reqBody))
+
+			// Generate SHA1 hash of the JSON string
+			hashBytes := sha1.Sum(reqBody)
+			hashString := fmt.Sprintf("%x", hashBytes)
+
+			// Save the response
+			responseBytes, _ := io.ReadAll(cacheResponse)
+			redisClient.SetEx(r.Context(), hashString, responseBytes, time.Duration(flow.CacheTTL)*time.Second)
+			fmt.Printf("caching the response of %s in redis: %s\n", functionName, string(responseBytes))
 		}
 	}
 }
@@ -130,14 +293,14 @@ func NewProxyClient(timeout time.Duration, maxIdleConns int, maxIdleConnsPerHost
 }
 
 // proxyRequest handles the actual resolution of and then request to the function service.
-func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient *http.Client, resolver BaseURLResolver) {
+func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient *http.Client, resolver BaseURLResolver, returnBody bool) *bytes.Reader {
 	ctx := originalReq.Context()
 
 	pathVars := mux.Vars(originalReq)
 	functionName := pathVars["name"]
 	if functionName == "" {
 		httputil.Errorf(w, http.StatusBadRequest, "Provide function name in the request path")
-		return
+		return nil
 	}
 
 	functionAddr, resolveErr := resolver.Resolve(functionName)
@@ -145,13 +308,13 @@ func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient 
 		// TODO: Should record the 404/not found error in Prometheus.
 		log.Printf("resolver error: no endpoints for %s: %s\n", functionName, resolveErr.Error())
 		httputil.Errorf(w, http.StatusServiceUnavailable, "No endpoints available for: %s.", functionName)
-		return
+		return nil
 	}
 
 	proxyReq, err := buildProxyRequest(originalReq, functionAddr, pathVars["params"])
 	if err != nil {
 		httputil.Errorf(w, http.StatusInternalServerError, "Failed to resolve service: %s.", functionName)
-		return
+		return nil
 	}
 
 	if proxyReq.Body != nil {
@@ -166,7 +329,7 @@ func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient 
 		log.Printf("error with proxy request to: %s, %s\n", proxyReq.URL.String(), err.Error())
 
 		httputil.Errorf(w, http.StatusInternalServerError, "Can't reach service for: %s.", functionName)
-		return
+		return nil
 	}
 
 	if response.Body != nil {
@@ -180,9 +343,21 @@ func proxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient 
 	w.Header().Set("Content-Type", getContentType(originalReq.Header, response.Header))
 
 	w.WriteHeader(response.StatusCode)
+
+	var cacheReader *bytes.Reader
 	if response.Body != nil {
-		io.Copy(w, response.Body)
+		if !returnBody {
+			io.Copy(w, response.Body)
+		} else {
+			responseBody, _ := io.ReadAll(response.Body)
+			responseReader := bytes.NewReader(responseBody)
+			cacheReader = bytes.NewReader(responseBody)
+
+			io.Copy(w, responseReader)
+		}
 	}
+
+	return cacheReader
 }
 
 // buildProxyRequest creates a request object for the proxy request, it will ensure that
